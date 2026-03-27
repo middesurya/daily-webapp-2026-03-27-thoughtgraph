@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThoughtGraph — Personal Knowledge Graph</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3a;
+    --text: #e0e0f0;
+    --text2: #8888aa;
+    --accent: #6c5ce7;
+    --accent2: #a29bfe;
+    --accent-glow: rgba(108, 92, 231, 0.3);
+    --danger: #ff6b6b;
+    --success: #51cf66;
+    --radius: 12px;
+  }
+  .light {
+    --bg: #f5f5fa;
+    --surface: #ffffff;
+    --surface2: #eeeef4;
+    --border: #d0d0e0;
+    --text: #1a1a2e;
+    --text2: #6666888;
+    --accent: #6c5ce7;
+    --accent2: #5a4bd1;
+    --accent-glow: rgba(108, 92, 231, 0.15);
+    --danger: #e03131;
+    --success: #2f9e44;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    transition: background 0.3s, color 0.3s;
+  }
+  #app { display: flex; height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 360px;
+    min-width: 360px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+    transition: transform 0.3s;
+  }
+  .sidebar.collapsed { transform: translateX(-360px); min-width: 0; width: 0; }
+  .sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo svg { width: 28px; height: 28px; }
+  .logo h1 { font-size: 18px; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .header-actions { display: flex; gap: 6px; }
+  .icon-btn {
+    width: 36px; height: 36px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    color: var(--text2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  .icon-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* Search */
+  .search-box {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border 0.2s;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--text2); }
+
+  /* Tags filter */
+  .tags-bar {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    max-height: 80px;
+    overflow-y: auto;
+  }
+  .tag-pill {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    transition: all 0.2s;
+  }
+  .tag-pill.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tag-pill:hover { border-color: var(--accent); }
+
+  /* Thoughts list */
+  .thoughts-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+  .thought-card {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+  }
+  .thought-card:hover { border-color: var(--accent); background: var(--surface2); }
+  .thought-card.active { border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
+  .thought-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .thought-card p { font-size: 12px; color: var(--text2); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .thought-card .card-tags { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+  .thought-card .card-tag { font-size: 10px; padding: 2px 8px; border-radius: 8px; background: var(--accent-glow); color: var(--accent2); }
+  .thought-card .card-meta { font-size: 10px; color: var(--text2); margin-top: 6px; }
+
+  /* Add button */
+  .add-section {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .add-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: var(--radius);
+    border: 2px dashed var(--border);
+    background: transparent;
+    color: var(--accent);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .add-btn:hover { border-color: var(--accent); background: var(--accent-glow); }
+
+  /* Graph area */
+  .graph-area {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  #graph { width: 100%; height: 100%; }
+  .graph-controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
+  }
+  .toggle-sidebar-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 5;
+  }
+  .stats-bar {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .stat { background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 8px; }
+  .stat strong { color: var(--accent2); }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    width: 480px;
+    max-width: 90vw;
+    max-height: 80vh;
+    overflow-y: auto;
+    padding: 28px;
+    transform: scale(0.95);
+    transition: transform 0.2s;
+  }
+  .modal-overlay.open .modal { transform: scale(1); }
+  .modal h2 { font-size: 20px; margin-bottom: 20px; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 13px; color: var(--text2); margin-bottom: 6px; font-weight: 500; }
+  .form-group input, .form-group textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    font-family: inherit;
+  }
+  .form-group input:focus, .form-group textarea:focus { border-color: var(--accent); }
+  .form-group textarea { resize: vertical; min-height: 100px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+  .btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { opacity: 0.8; }
+
+  /* Detail panel */
+  .detail-panel {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    width: 400px;
+    max-width: 80vw;
+    z-index: 20;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    display: none;
+  }
+  .detail-panel.open { display: block; }
+  .detail-panel h3 { font-size: 16px; margin-bottom: 8px; }
+  .detail-panel p { font-size: 14px; color: var(--text2); line-height: 1.6; }
+  .detail-panel .detail-tags { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .detail-panel .detail-connections { margin-top: 12px; font-size: 12px; color: var(--text2); }
+  .detail-panel .detail-actions { display: flex; gap: 8px; margin-top: 14px; }
+
+  /* Node tooltip */
+  .node-tooltip {
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 50;
+    display: none;
+    max-width: 200px;
+  }
+
+  /* Welcome state */
+  .welcome {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text2);
+    text-align: center;
+    pointer-events: none;
+  }
+  .welcome svg { width: 80px; height: 80px; opacity: 0.3; margin-bottom: 16px; }
+  .welcome h2 { font-size: 22px; color: var(--text); margin-bottom: 8px; }
+  .welcome p { font-size: 14px; max-width: 300px; }
+
+  /* Link styling in graph */
+  .link { stroke: var(--border); stroke-opacity: 0.4; }
+  .link.highlighted { stroke: var(--accent); stroke-opacity: 0.8; }
+  .node-label { font-size: 11px; fill: var(--text); pointer-events: none; text-anchor: middle; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .sidebar { position: absolute; z-index: 20; height: 100vh; }
+    .sidebar.collapsed { transform: translateX(-100%); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <svg viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="12" stroke="url(#g1)" stroke-width="2"/><circle cx="10" cy="11" r="3" fill="url(#g1)"/><circle cx="18" cy="11" r="3" fill="url(#g1)"/><circle cx="14" cy="19" r="3" fill="url(#g1)"/><line x1="12" y1="12" x2="16" y2="12" stroke="url(#g1)" stroke-width="1.5"/><line x1="11" y1="13" x2="13" y2="17" stroke="url(#g1)" stroke-width="1.5"/><line x1="17" y1="13" x2="15" y2="17" stroke="url(#g1)" stroke-width="1.5"/><defs><linearGradient id="g1" x1="0" y1="0" x2="28" y2="28"><stop stop-color="#6c5ce7"/><stop offset="1" stop-color="#a29bfe"/></linearGradient></defs></svg>
+        <h1>ThoughtGraph</h1>
+      </div>
+      <div class="header-actions">
+        <button class="icon-btn" id="themeToggle" title="Toggle theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5V2.5a5.5 5.5 0 010 11z"/></svg></button>
+        <button class="icon-btn" id="exportBtn" title="Export data"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l4 4h-3v5H7V5H4l4-4zM2 12h12v2H2v-2z"/></svg></button>
+        <button class="icon-btn" id="importBtn" title="Import data"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10L4 6h3V1h2v5h3L8 10zM2 12h12v2H2v-2z"/></svg></button>
+      </div>
+    </div>
+    <div class="search-box">
+      <input type="text" class="search-input" id="searchInput" placeholder="Search thoughts...">
+    </div>
+    <div class="tags-bar" id="tagsBar"></div>
+    <div class="thoughts-list" id="thoughtsList"></div>
+    <div class="add-section">
+      <button class="add-btn" id="addBtn">+ Add New Thought</button>
+    </div>
+  </div>
+
+  <!-- Graph Area -->
+  <div class="graph-area">
+    <button class="icon-btn toggle-sidebar-btn" id="toggleSidebar" title="Toggle sidebar">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1 3h14v1.5H1V3zm0 4.25h14v1.5H1v-1.5zm0 4.25h14V13H1v-1.5z"/></svg>
+    </button>
+    <div class="stats-bar" id="statsBar">
+      <div class="stat"><strong id="nodeCount">0</strong> thoughts</div>
+      <div class="stat"><strong id="edgeCount">0</strong> connections</div>
+    </div>
+    <svg id="graph"></svg>
+    <div class="graph-controls">
+      <button class="icon-btn" id="zoomIn" title="Zoom in"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M7 3v4H3v2h4v4h2V9h4V7H9V3H7z"/></svg></button>
+      <button class="icon-btn" id="zoomOut" title="Zoom out"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M3 7h10v2H3V7z"/></svg></button>
+      <button class="icon-btn" id="zoomFit" title="Fit view"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h4v1.5H3.5V6H2V2zm8 0h4v4h-1.5V3.5H10V2zM2 10h1.5v2.5H6V14H2v-4zm10.5 2.5V10H14v4h-4v-1.5h2.5z"/></svg></button>
+    </div>
+    <div class="welcome" id="welcomeMsg">
+      <svg viewBox="0 0 80 80" fill="none"><circle cx="40" cy="40" r="35" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"/><circle cx="28" cy="32" r="6" fill="currentColor" opacity="0.3"/><circle cx="52" cy="32" r="6" fill="currentColor" opacity="0.3"/><circle cx="40" cy="52" r="6" fill="currentColor" opacity="0.3"/><line x1="33" y1="34" x2="47" y2="34" stroke="currentColor" stroke-width="1.5" opacity="0.3"/><line x1="30" y1="37" x2="37" y2="48" stroke="currentColor" stroke-width="1.5" opacity="0.3"/><line x1="50" y1="37" x2="43" y2="48" stroke="currentColor" stroke-width="1.5" opacity="0.3"/></svg>
+      <h2>Your Knowledge Graph</h2>
+      <p>Add your first thought to start building connections between your ideas.</p>
+    </div>
+    <div class="detail-panel" id="detailPanel">
+      <h3 id="detailTitle"></h3>
+      <p id="detailContent"></p>
+      <div class="detail-tags" id="detailTags"></div>
+      <div class="detail-connections" id="detailConnections"></div>
+      <div class="detail-actions">
+        <button class="btn btn-secondary" id="editThoughtBtn">Edit</button>
+        <button class="btn btn-danger" id="deleteThoughtBtn">Delete</button>
+        <button class="btn btn-secondary" id="closeDetailBtn">Close</button>
+      </div>
+    </div>
+    <div class="node-tooltip" id="tooltip"></div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">Add New Thought</h2>
+    <div class="form-group">
+      <label for="thoughtTitle">Title</label>
+      <input type="text" id="thoughtTitle" placeholder="A concise title for your thought...">
+    </div>
+    <div class="form-group">
+      <label for="thoughtContent">Content</label>
+      <textarea id="thoughtContent" placeholder="Expand on your idea, note, or insight..."></textarea>
+    </div>
+    <div class="form-group">
+      <label for="thoughtTags">Tags (comma-separated)</label>
+      <input type="text" id="thoughtTags" placeholder="e.g., idea, project, learning">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="cancelModal">Cancel</button>
+      <button class="btn btn-primary" id="saveThought">Save Thought</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file input for import -->
+<input type="file" id="fileInput" accept=".json" style="display:none">
+
+<script>
+// ============================================================
+// ThoughtGraph — Personal Knowledge Graph
+// Built: 2026-03-27
+// ============================================================
+
+const TAG_COLORS = [
+  '#6c5ce7','#00b894','#e17055','#0984e3','#fdcb6e',
+  '#e84393','#00cec9','#d63031','#6ab04c','#e056fd',
+  '#2ed573','#1e90ff','#ff6348','#ffa502','#7bed9f'
+];
+
+// State
+let thoughts = [];
+let activeTag = null;
+let searchQuery = '';
+let selectedThought = null;
+let editingId = null;
+let tagColorMap = {};
+
+// Load from localStorage
+function loadData() {
+  try {
+    const saved = localStorage.getItem('thoughtgraph_data');
+    if (saved) thoughts = JSON.parse(saved);
+  } catch(e) { console.log('Fresh start'); }
+  if (!thoughts.length) loadSampleData();
+}
+
+function saveData() {
+  localStorage.setItem('thoughtgraph_data', JSON.stringify(thoughts));
+}
+
+function loadSampleData() {
+  const samples = [
+    { id: genId(), title: 'Knowledge Graphs', content: 'Knowledge graphs represent information as nodes and edges, making it easy to discover hidden connections between concepts. They are used in search engines, recommendation systems, and personal knowledge management.', tags: ['concept', 'tech'], created: Date.now() - 86400000*5 },
+    { id: genId(), title: 'Second Brain Method', content: 'The Second Brain methodology by Tiago Forte suggests capturing, organizing, distilling, and expressing knowledge. Digital note-taking becomes an extension of your mind when done systematically.', tags: ['productivity', 'learning'], created: Date.now() - 86400000*4 },
+    { id: genId(), title: 'Force-Directed Graphs', content: 'Force-directed graph drawing algorithms position nodes using simulated physical forces. Springs pull connected nodes together while repulsive charges push all nodes apart, finding equilibrium.', tags: ['tech', 'visualization'], created: Date.now() - 86400000*3 },
+    { id: genId(), title: 'Zettelkasten Method', content: 'Zettelkasten is a personal knowledge management system that connects atomic notes through links. Each note captures a single idea and connects to related notes, building an emergent network of knowledge over time.', tags: ['productivity', 'learning'], created: Date.now() - 86400000*2 },
+    { id: genId(), title: 'TF-IDF Text Similarity', content: 'Term Frequency-Inverse Document Frequency measures how important a word is in a document relative to a collection. It is useful for finding similar documents, search relevance ranking, and automatic keyword extraction.', tags: ['tech', 'concept'], created: Date.now() - 86400000 },
+    { id: genId(), title: 'Visual Thinking', content: 'Humans process visual information faster than text. Mind maps, concept maps, and knowledge graphs leverage spatial memory to help organize and recall complex information. Visualization aids comprehension and creativity.', tags: ['learning', 'concept'], created: Date.now() - 3600000*5 },
+    { id: genId(), title: 'Spaced Repetition', content: 'Reviewing information at increasing intervals strengthens long-term memory. Combining spaced repetition with a knowledge graph could highlight which connections need reinforcement, creating a dynamic learning system.', tags: ['learning', 'idea'], created: Date.now() - 3600000*2 },
+    { id: genId(), title: 'Graph Databases', content: 'Neo4j, ArangoDB, and other graph databases store data as nodes and relationships natively. Unlike relational databases, they excel at traversing connections, making them ideal for recommendation engines and social networks.', tags: ['tech'], created: Date.now() - 3600000 },
+  ];
+  thoughts = samples;
+  saveData();
+}
+
+function genId() { return Math.random().toString(36).substr(2, 9); }
+
+// ============================================================
+// TF-IDF Text Similarity Engine
+// ============================================================
+
+function tokenize(text) {
+  const stop = new Set(['the','a','an','is','are','was','were','be','been','being','have','has','had','do','does','did','will','would','could','should','may','might','shall','can','need','dare','ought','used','to','of','in','for','on','with','at','by','from','as','into','through','during','before','after','above','below','between','out','off','over','under','again','further','then','once','here','there','when','where','why','how','all','each','every','both','few','more','most','other','some','such','no','nor','not','only','own','same','so','than','too','very','just','because','and','but','or','if','while','that','this','it','its','they','them','their','he','she','we','i','you','my','your','his','her','our','what','which']);
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !stop.has(w));
+}
+
+function computeTFIDF(documents) {
+  const N = documents.length;
+  const docTokens = documents.map(d => tokenize(d));
+  const df = {};
+  docTokens.forEach(tokens => {
+    const seen = new Set(tokens);
+    seen.forEach(t => { df[t] = (df[t] || 0) + 1; });
+  });
+  return docTokens.map(tokens => {
+    const tf = {};
+    tokens.forEach(t => { tf[t] = (tf[t] || 0) + 1; });
+    const maxTf = Math.max(...Object.values(tf), 1);
+    const tfidf = {};
+    Object.keys(tf).forEach(t => {
+      tfidf[t] = (tf[t] / maxTf) * Math.log(N / (df[t] || 1));
+    });
+    return tfidf;
+  });
+}
+
+function cosineSimilarity(a, b) {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  let dot = 0, magA = 0, magB = 0;
+  keys.forEach(k => {
+    const va = a[k] || 0, vb = b[k] || 0;
+    dot += va * vb;
+    magA += va * va;
+    magB += vb * vb;
+  });
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
+}
+
+function computeConnections() {
+  if (thoughts.length < 2) return [];
+  const docs = thoughts.map(t => t.title + ' ' + t.content + ' ' + t.tags.join(' '));
+  const tfidfVectors = computeTFIDF(docs);
+  const links = [];
+  const THRESHOLD = 0.08;
+  for (let i = 0; i < thoughts.length; i++) {
+    for (let j = i + 1; j < thoughts.length; j++) {
+      const sim = cosineSimilarity(tfidfVectors[i], tfidfVectors[j]);
+      if (sim > THRESHOLD) {
+        links.push({ source: thoughts[i].id, target: thoughts[j].id, strength: sim });
+      }
+    }
+  }
+  return links;
+}
+
+// ============================================================
+// Tag Management
+// ============================================================
+
+function getAllTags() {
+  const tags = new Set();
+  thoughts.forEach(t => t.tags.forEach(tag => tags.add(tag)));
+  return [...tags].sort();
+}
+
+function getTagColor(tag) {
+  if (!tagColorMap[tag]) {
+    const idx = Object.keys(tagColorMap).length % TAG_COLORS.length;
+    tagColorMap[tag] = TAG_COLORS[idx];
+  }
+  return tagColorMap[tag];
+}
+
+function getDominantTag(thought) {
+  return thought.tags.length > 0 ? thought.tags[0] : null;
+}
+
+// ============================================================
+// UI Rendering
+// ============================================================
+
+function renderTagsBar() {
+  const bar = document.getElementById('tagsBar');
+  const tags = getAllTags();
+  bar.innerHTML = tags.map(tag => {
+    const active = activeTag === tag ? 'active' : '';
+    return `<span class="tag-pill ${active}" data-tag="${tag}" style="${active ? `background:${getTagColor(tag)};border-color:${getTagColor(tag)}` : ''}">${tag}</span>`;
+  }).join('');
+  bar.querySelectorAll('.tag-pill').forEach(el => {
+    el.addEventListener('click', () => {
+      activeTag = activeTag === el.dataset.tag ? null : el.dataset.tag;
+      renderAll();
+    });
+  });
+}
+
+function getFilteredThoughts() {
+  return thoughts.filter(t => {
+    if (activeTag && !t.tags.includes(activeTag)) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return t.title.toLowerCase().includes(q) || t.content.toLowerCase().includes(q) || t.tags.some(tag => tag.includes(q));
+    }
+    return true;
+  });
+}
+
+function renderThoughtsList() {
+  const list = document.getElementById('thoughtsList');
+  const filtered = getFilteredThoughts();
+  list.innerHTML = filtered.sort((a, b) => b.created - a.created).map(t => `
+    <div class="thought-card ${selectedThought === t.id ? 'active' : ''}" data-id="${t.id}">
+      <h3>${escHtml(t.title)}</h3>
+      <p>${escHtml(t.content)}</p>
+      <div class="card-tags">${t.tags.map(tag => `<span class="card-tag" style="background:${getTagColor(tag)}22;color:${getTagColor(tag)}">${tag}</span>`).join('')}</div>
+      <div class="card-meta">${timeAgo(t.created)}</div>
+    </div>
+  `).join('');
+  if (!filtered.length) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text2);padding:40px;font-size:14px;">No thoughts match your search.</div>';
+  }
+  list.querySelectorAll('.thought-card').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedThought = el.dataset.id;
+      renderAll();
+      highlightNode(el.dataset.id);
+    });
+  });
+}
+
+function renderStats() {
+  const links = computeConnections();
+  document.getElementById('nodeCount').textContent = thoughts.length;
+  document.getElementById('edgeCount').textContent = links.length;
+  document.getElementById('welcomeMsg').style.display = thoughts.length === 0 ? 'flex' : 'none';
+}
+
+function renderAll() {
+  renderTagsBar();
+  renderThoughtsList();
+  renderStats();
+  renderGraph();
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function timeAgo(ts) {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + 'h ago';
+  const days = Math.floor(hours / 24);
+  if (days < 30) return days + 'd ago';
+  return new Date(ts).toLocaleDateString();
+}
+
+// ============================================================
+// D3 Force Graph
+// ============================================================
+
+let simulation, svgGroup, zoom;
+
+function initGraph() {
+  const svg = d3.select('#graph');
+  const width = svg.node().parentElement.clientWidth;
+  const height = svg.node().parentElement.clientHeight;
+  svg.attr('width', width).attr('height', height);
+
+  zoom = d3.zoom().scaleExtent([0.2, 5]).on('zoom', (e) => {
+    svgGroup.attr('transform', e.transform);
+  });
+  svg.call(zoom);
+  svgGroup = svg.append('g');
+
+  // Gradient def for links
+  const defs = svg.append('defs');
+  const grad = defs.append('linearGradient').attr('id', 'linkGrad');
+  grad.append('stop').attr('offset', '0%').attr('stop-color', '#6c5ce7').attr('stop-opacity', 0.5);
+  grad.append('stop').attr('offset', '100%').attr('stop-color', '#a29bfe').attr('stop-opacity', 0.5);
+}
+
+function renderGraph() {
+  if (!svgGroup) return;
+  svgGroup.selectAll('*').remove();
+
+  const links = computeConnections();
+  const nodes = thoughts.map(t => ({
+    id: t.id,
+    title: t.title,
+    tags: t.tags,
+    r: 8 + Math.min(t.content.length / 30, 16)
+  }));
+
+  if (!nodes.length) return;
+
+  const svg = d3.select('#graph');
+  const width = svg.node().parentElement.clientWidth;
+  const height = svg.node().parentElement.clientHeight;
+
+  simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(d => 120 - d.strength * 80).strength(d => 0.3 + d.strength))
+    .force('charge', d3.forceManyBody().strength(-300))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(d => d.r + 10));
+
+  // Links
+  const link = svgGroup.append('g')
+    .selectAll('line')
+    .data(links)
+    .join('line')
+    .attr('class', 'link')
+    .attr('stroke-width', d => 1 + d.strength * 4);
+
+  // Node groups
+  const node = svgGroup.append('g')
+    .selectAll('g')
+    .data(nodes)
+    .join('g')
+    .attr('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  // Glow effect
+  node.append('circle')
+    .attr('r', d => d.r + 6)
+    .attr('fill', d => { const tag = getDominantTag({tags: d.tags}); return tag ? getTagColor(tag) : '#6c5ce7'; })
+    .attr('opacity', 0.15);
+
+  // Node circle
+  node.append('circle')
+    .attr('r', d => d.r)
+    .attr('fill', d => { const tag = getDominantTag({tags: d.tags}); return tag ? getTagColor(tag) : '#6c5ce7'; })
+    .attr('stroke', d => selectedThought === d.id ? '#fff' : 'transparent')
+    .attr('stroke-width', 2);
+
+  // Label
+  node.append('text')
+    .attr('class', 'node-label')
+    .attr('dy', d => d.r + 16)
+    .text(d => d.title.length > 20 ? d.title.slice(0, 18) + '...' : d.title);
+
+  // Hover
+  node.on('mouseover', function(e, d) {
+    const tooltip = document.getElementById('tooltip');
+    tooltip.style.display = 'block';
+    tooltip.style.left = (e.pageX + 10) + 'px';
+    tooltip.style.top = (e.pageY - 10) + 'px';
+    tooltip.innerHTML = `<strong>${escHtml(d.title)}</strong><br><span style="color:var(--text2)">${d.tags.join(', ')}</span>`;
+    d3.select(this).select('circle:nth-child(2)').attr('stroke', '#fff');
+    // Highlight connected links
+    link.attr('class', l => (l.source.id === d.id || l.target.id === d.id) ? 'link highlighted' : 'link');
+  }).on('mouseout', function(e, d) {
+    document.getElementById('tooltip').style.display = 'none';
+    d3.select(this).select('circle:nth-child(2)').attr('stroke', selectedThought === d.id ? '#fff' : 'transparent');
+    link.attr('class', 'link');
+  }).on('click', (e, d) => {
+    selectedThought = d.id;
+    showDetailPanel(d.id);
+    renderThoughtsList();
+    renderGraph();
+  });
+
+  simulation.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+}
+
+function highlightNode(id) {
+  const node = thoughts.find(t => t.id === id);
+  if (node) showDetailPanel(id);
+}
+
+function showDetailPanel(id) {
+  const t = thoughts.find(th => th.id === id);
+  if (!t) return;
+  const panel = document.getElementById('detailPanel');
+  document.getElementById('detailTitle').textContent = t.title;
+  document.getElementById('detailContent').textContent = t.content;
+  document.getElementById('detailTags').innerHTML = t.tags.map(tag => `<span class="card-tag" style="background:${getTagColor(tag)}22;color:${getTagColor(tag)}">${tag}</span>`).join('');
+  const links = computeConnections().filter(l => l.source === id || l.target === id);
+  const connNames = links.map(l => {
+    const otherId = l.source === id ? l.target : l.source;
+    const other = thoughts.find(th => th.id === otherId);
+    return other ? `${other.title} (${(l.strength * 100).toFixed(0)}%)` : '';
+  }).filter(Boolean);
+  document.getElementById('detailConnections').innerHTML = connNames.length ? `Connected to: ${connNames.join(', ')}` : 'No connections yet';
+  panel.classList.add('open');
+}
+
+// ============================================================
+// Event Handlers
+// ============================================================
+
+document.getElementById('addBtn').addEventListener('click', () => {
+  editingId = null;
+  document.getElementById('modalTitle').textContent = 'Add New Thought';
+  document.getElementById('thoughtTitle').value = '';
+  document.getElementById('thoughtContent').value = '';
+  document.getElementById('thoughtTags').value = '';
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('thoughtTitle').focus();
+});
+
+document.getElementById('cancelModal').addEventListener('click', () => {
+  document.getElementById('modalOverlay').classList.remove('open');
+});
+
+document.getElementById('modalOverlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) document.getElementById('modalOverlay').classList.remove('open');
+});
+
+document.getElementById('saveThought').addEventListener('click', () => {
+  const title = document.getElementById('thoughtTitle').value.trim();
+  const content = document.getElementById('thoughtContent').value.trim();
+  const tags = document.getElementById('thoughtTags').value.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+  if (!title) { document.getElementById('thoughtTitle').style.borderColor = 'var(--danger)'; return; }
+  if (editingId) {
+    const t = thoughts.find(th => th.id === editingId);
+    if (t) { t.title = title; t.content = content; t.tags = tags; }
+  } else {
+    thoughts.push({ id: genId(), title, content, tags, created: Date.now() });
+  }
+  saveData();
+  document.getElementById('modalOverlay').classList.remove('open');
+  renderAll();
+});
+
+document.getElementById('editThoughtBtn').addEventListener('click', () => {
+  if (!selectedThought) return;
+  const t = thoughts.find(th => th.id === selectedThought);
+  if (!t) return;
+  editingId = selectedThought;
+  document.getElementById('modalTitle').textContent = 'Edit Thought';
+  document.getElementById('thoughtTitle').value = t.title;
+  document.getElementById('thoughtContent').value = t.content;
+  document.getElementById('thoughtTags').value = t.tags.join(', ');
+  document.getElementById('detailPanel').classList.remove('open');
+  document.getElementById('modalOverlay').classList.add('open');
+});
+
+document.getElementById('deleteThoughtBtn').addEventListener('click', () => {
+  if (!selectedThought) return;
+  thoughts = thoughts.filter(t => t.id !== selectedThought);
+  selectedThought = null;
+  document.getElementById('detailPanel').classList.remove('open');
+  saveData();
+  renderAll();
+});
+
+document.getElementById('closeDetailBtn').addEventListener('click', () => {
+  document.getElementById('detailPanel').classList.remove('open');
+  selectedThought = null;
+  renderAll();
+});
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  searchQuery = e.target.value;
+  renderThoughtsList();
+});
+
+document.getElementById('toggleSidebar').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('collapsed');
+  setTimeout(() => {
+    const svg = d3.select('#graph');
+    const width = svg.node().parentElement.clientWidth;
+    const height = svg.node().parentElement.clientHeight;
+    svg.attr('width', width).attr('height', height);
+    renderGraph();
+  }, 350);
+});
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  document.body.classList.toggle('light');
+  localStorage.setItem('thoughtgraph_theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  renderGraph();
+});
+
+document.getElementById('zoomIn').addEventListener('click', () => {
+  d3.select('#graph').transition().duration(300).call(zoom.scaleBy, 1.3);
+});
+document.getElementById('zoomOut').addEventListener('click', () => {
+  d3.select('#graph').transition().duration(300).call(zoom.scaleBy, 0.7);
+});
+document.getElementById('zoomFit').addEventListener('click', () => {
+  d3.select('#graph').transition().duration(500).call(zoom.transform, d3.zoomIdentity);
+});
+
+// Export
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ thoughts, version: 1 }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `thoughtgraph-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+// Import
+document.getElementById('importBtn').addEventListener('click', () => {
+  document.getElementById('fileInput').click();
+});
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (data.thoughts && Array.isArray(data.thoughts)) {
+        thoughts = data.thoughts;
+        saveData();
+        renderAll();
+      }
+    } catch (err) { alert('Invalid file format'); }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.getElementById('modalOverlay').classList.remove('open');
+    document.getElementById('detailPanel').classList.remove('open');
+    selectedThought = null;
+    renderAll();
+  }
+  if (e.key === 'n' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    document.getElementById('addBtn').click();
+  }
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    document.getElementById('searchInput').focus();
+  }
+});
+
+// ============================================================
+// Init
+// ============================================================
+
+function init() {
+  if (localStorage.getItem('thoughtgraph_theme') === 'light') document.body.classList.add('light');
+  loadData();
+  initGraph();
+  renderAll();
+  window.addEventListener('resize', () => {
+    const svg = d3.select('#graph');
+    const width = svg.node().parentElement.clientWidth;
+    const height = svg.node().parentElement.clientHeight;
+    svg.attr('width', width).attr('height', height);
+    renderGraph();
+  });
+}
+
+init();
+</script>
+</body>
+</html>
